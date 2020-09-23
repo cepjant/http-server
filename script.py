@@ -8,7 +8,7 @@ serverPort = 8000
 
 
 
-class MyServer(BaseHTTPRequestHandler):
+class Server(BaseHTTPRequestHandler):
     def do_GET(self):
         print(self.path)
         if self.path.startswith('/city/'):
@@ -18,22 +18,23 @@ class MyServer(BaseHTTPRequestHandler):
         elif self.path.startswith('/cities/?compare='):
             self.get_compare()
         else:
-            self.send_response(404)
-            self.send_header("Content-type", "text/html")
-            self.end_headers()
-            self.wfile.write(bytes("PAGE NOT FOUND / 404", "utf-8"))
-            print('NE ASD')
+            send_headers(404)
+            response = {"status": "not fount"}
+            self.write_html(str(response))
 
-    def send_headers(self): # вынес сюда чтобы не дублировать в каждой функции
-        self.send_response(200)
+    def send_headers(self, code): # вынес сюда чтобы не дублировать в каждой функции
+        self.send_response(code)
         self.send_header("Content-type", "text/html")
         self.end_headers()
 
-    def write_head_html(self): # вынес сюда чтобы не дублировать в каждой функции
+    def write_html(self, body): # вынес сюда чтобы не дублировать в каждой функции
         self.wfile.write(bytes("<html><head><meta content='text/html;  \
             charset=utf-8' http-equiv='Content-Type'></head>", "utf-8"))
         self.wfile.write(bytes("<meta content='utf-8' http-equiv='encoding'>  \
             </head>", "utf-8"))
+        self.wfile.write(bytes("<body>", "utf-8"))
+        self.wfile.write(bytes(body, "utf-8"))
+        self.wfile.write(bytes("</body>", "utf-8"))
 
     def convert_into_json(self, city_info):
         data = {
@@ -59,29 +60,40 @@ class MyServer(BaseHTTPRequestHandler):
         }
         return data
 
-
     def get_city_info(self):
-        self.send_headers()
-        self.write_head_html()
         city_id = self.path.split('/')[-1]
+        city_info = None
         for i in data:
             if i[0] == city_id:
                 city_info = i
-        response = self.convert_into_json(city_info)
-        self.wfile.write(bytes(str(response), "utf-8"))
+        if city_info:
+            response = {
+            'data': self.convert_into_json(city_info),
+            'status': 'ok'}
+            self.send_headers(200)
+            self.write_html(str(response))
+        else:
+            response = {
+            'status': 'not found'}
+            self.send_headers(404)
+            self.write_html(str(response))
 
     def get_all_cities(self):
         if int(self.path.split('=')[-1]) < 1:
             page = 0
         page = int(self.path.split('=')[-1]) - 1
         result = data[page * 10: page * 10 + 10]
-        print(len(result))
-        self.send_headers()
-        self.write_head_html()
-        response = {"cities": [self.convert_into_json(city) for city in result]}
-        self.wfile.write(bytes("<body>", "utf-8"))
-        self.wfile.write(bytes(str(response), "utf-8"))
-        self.wfile.write(bytes("</body>", "utf-8"))
+        if result:
+            response = {
+            "data": [self.convert_into_json(city) for city in result],
+            "status": "ok"}
+            self.send_headers(200)
+            self.write_html(str(response))
+        else:
+            response = {
+            "status": "not found"}
+            self.send_headers(404)
+            self.write_html(str(response))
 
     def get_compare(self):
         cities = self.path[self.path.find('=') + 1:].split(',')
@@ -92,20 +104,25 @@ class MyServer(BaseHTTPRequestHandler):
             alternatenames = city[3].split(',')
             if city_1 in alternatenames or city_2 in alternatenames:
                 result.append(city)
-        self.send_headers()
-        self.write_head_html()
-        # response = {"cities": [self.convert_into_json(city) for city in result]}
-        response_list = []
-        for city in result:
-            json_data = self.convert_into_json(city)
-            json_data.update({
-            'is_norther': '-',
-            'different_tz': '-'})
-            response_list.append(json_data)
-        response = {"cities": response_list}
-        self.wfile.write(bytes("<body>", "utf-8"))
-        self.wfile.write(bytes(str(response), "utf-8"))
-        self.wfile.write(bytes("</body>", "utf-8"))
+        if result:
+            response_list = []
+            for city in result:
+                json_data = self.convert_into_json(city)
+                json_data.update({
+                'is_norther': '-',
+                'has_different_tz': '-',
+                'tz_diff': '-'})
+                response_list.append(json_data)
+            response = {
+            "data": response_list,
+            "status": "ok"}
+            self.send_headers(200)
+            self.write_html(str(response))
+        else:
+            response = {
+            "status": "not found"}
+            self.send_headers(404)
+            self.write_html(str(response))
 
 
 
@@ -127,7 +144,7 @@ if __name__ == "__main__":
         print('Ошибка! Файл "RU.txt" с данными не найден в текущей директории.')
 
 
-    webServer = HTTPServer((hostName, serverPort), MyServer)
+    webServer = HTTPServer((hostName, serverPort), Server)
     print("Server started http://%s:%s" % (hostName, serverPort))
 
     try:
