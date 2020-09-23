@@ -35,7 +35,7 @@ class MyServer(BaseHTTPRequestHandler):
         self.wfile.write(bytes("<meta content='utf-8' http-equiv='encoding'>  \
             </head>", "utf-8"))
 
-    def get_json_data(self, city_info):
+    def convert_into_json(self, city_info):
         data = {
             "geonameid": city_info[0],
             "name": city_info[1],
@@ -67,7 +67,7 @@ class MyServer(BaseHTTPRequestHandler):
         for i in data:
             if i[0] == city_id:
                 city_info = i
-        response = self.get_json_data(city_info)
+        response = self.convert_into_json(city_info)
         self.wfile.write(bytes(str(response), "utf-8"))
 
     def get_all_cities(self):
@@ -78,9 +78,9 @@ class MyServer(BaseHTTPRequestHandler):
         print(len(result))
         self.send_headers()
         self.write_head_html()
+        response = {"cities": [self.convert_into_json(city) for city in result]}
         self.wfile.write(bytes("<body>", "utf-8"))
-        for city in result:
-                    self.wfile.write(bytes("<p>" + str(city) + '</p>', "utf-8"))
+        self.wfile.write(bytes(str(response), "utf-8"))
         self.wfile.write(bytes("</body>", "utf-8"))
 
     def get_compare(self):
@@ -88,16 +88,23 @@ class MyServer(BaseHTTPRequestHandler):
         city_1 = urllib.parse.unquote(cities[0]) # правим кодировку
         city_2 = urllib.parse.unquote(cities[1])
         result = []
-        print(city_1, city_2)
         for city in data:
-            if city[3].find(city_1) != -1 or city[3].find(city_2) != -1:
+            alternatenames = city[3].split(',')
+            if city_1 in alternatenames or city_2 in alternatenames:
                 result.append(city)
-        print(result)
         self.send_headers()
         self.write_head_html()
-        self.wfile.write(bytes("<body>", "utf-8"))
+        # response = {"cities": [self.convert_into_json(city) for city in result]}
+        response_list = []
         for city in result:
-                    self.wfile.write(bytes("<p>" + str(city) + '</p>', "utf-8"))
+            json_data = self.convert_into_json(city)
+            json_data.update({
+            'is_norther': '-',
+            'different_tz': '-'})
+            response_list.append(json_data)
+        response = {"cities": response_list}
+        self.wfile.write(bytes("<body>", "utf-8"))
+        self.wfile.write(bytes(str(response), "utf-8"))
         self.wfile.write(bytes("</body>", "utf-8"))
 
 
