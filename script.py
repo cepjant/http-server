@@ -1,6 +1,8 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import time
 import urllib.parse
+import pytz
+from datetime import datetime
 
 hostName = "localhost"
 serverPort = 8000
@@ -18,14 +20,16 @@ class Server(BaseHTTPRequestHandler):
         elif self.path.startswith('/cities/?compare='):
             self.get_compare()
         else:
-            send_headers(404)
-            response = {"status": "not fount"}
+            self.send_headers(404)
+            response = {"status": "not found"}
             self.write_html(str(response))
+
 
     def send_headers(self, code): # вынес сюда чтобы не дублировать в каждой функции
         self.send_response(code)
         self.send_header("Content-type", "text/html")
         self.end_headers()
+
 
     def write_html(self, body): # вынес сюда чтобы не дублировать в каждой функции
         self.wfile.write(bytes("<html><head><meta content='text/html;  \
@@ -35,6 +39,7 @@ class Server(BaseHTTPRequestHandler):
         self.wfile.write(bytes("<body>", "utf-8"))
         self.wfile.write(bytes(body, "utf-8"))
         self.wfile.write(bytes("</body>", "utf-8"))
+
 
     def convert_into_json(self, city_info):
         data = {
@@ -56,9 +61,16 @@ class Server(BaseHTTPRequestHandler):
             "elevation": city_info[15],
             "dem": city_info[16],
             "timezone": city_info[17],
-            "modification date": city_info[18].strip()
+            "modification date": city_info[18].strip(),
         }
+        if len(city_info) > 18:
+            data.update({
+                'is_norther': city_info[19],
+                'has_different_tz': city_info[20],
+                'tz_diff': city_info[21]
+                })
         return data
+
 
     def get_city_info(self):
         city_id = self.path.split('/')[-1]
@@ -78,6 +90,7 @@ class Server(BaseHTTPRequestHandler):
             self.send_headers(404)
             self.write_html(str(response))
 
+
     def get_all_cities(self):
         if int(self.path.split('=')[-1]) < 1:
             page = 0
@@ -95,29 +108,67 @@ class Server(BaseHTTPRequestHandler):
             self.send_headers(404)
             self.write_html(str(response))
 
+
     def get_compare(self):
         cities = self.path[self.path.find('=') + 1:].split(',')
-        city_1 = urllib.parse.unquote(cities[0]) # правим кодировку
-        city_2 = urllib.parse.unquote(cities[1])
+        city_1_req = urllib.parse.unquote(cities[0]) # правим кодировку
+        city_2_req = urllib.parse.unquote(cities[1])
         result = []
+        city_1_matches = []
+        city_2_matches = []
         for city in data:
             alternatenames = city[3].split(',')
-            if city_1 in alternatenames or city_2 in alternatenames:
-                result.append(city)
+            if city_1_req in alternatenames:
+                city_1_matches.append(city)
+            if city_2_req in alternatenames:
+                city_2_matches.append(city)
+        city_1 = sorted(city_1_matches, key=lambda i: int(i[14]), reverse=True)[0]
+        city_2 = sorted(city_2_matches, key=lambda i: int(i[14]), reverse=True)[0]
+        if float(city_1[4]) > float(city_2[4]):
+            city_1.append("True")
+            city_2.append('False')
+        elif float(city_1[4]) < float(city_2[4]):
+            city_1.append("False")
+            city_2.append('True')
+        
+        if city_1[17] != city_2[17]:
+            city_1.append('True')
+            city_2.append('True')
+            IST_1 = pytz.timezone(city_1[17])
+            IST_2 = pytz.timezone(city_2[17])
+            time_in_city_1 = datetime.now(IST_1)
+            time_in_city_2 = datetime.now(IST_2)
+            first_time = int(str(time_in_city_1).split(' ')[1][-5:-3])
+            second_time = int(str(time_in_city_2).split(' ')[1][-5:-3])
+            if first_time > second_time:
+                time_difference = first_time - second_time
+                city_1.append('+' + str(time_difference))
+                city_2.append('-' + str(time_difference))
+            else:
+                time_difference = second_time - first_time
+                city_1.append('-' + str(time_difference))
+                city_2.append('+' + str(time_difference))     
+        else:
+            city_1.append('False')
+            city_1.append(0)
+            city_2.append('False')
+            city_2.append(0)
+        print(city_1)
+        print(city_2)
+        result += city_1, city_2
+        
         if result:
             response_list = []
             for city in result:
                 json_data = self.convert_into_json(city)
-                json_data.update({
-                'is_norther': '-',
-                'has_different_tz': '-',
-                'tz_diff': '-'})
                 response_list.append(json_data)
             response = {
             "data": response_list,
             "status": "ok"}
             self.send_headers(200)
             self.write_html(str(response))
+            print(response)
+            print(response_list)
         else:
             response = {
             "status": "not found"}
@@ -140,6 +191,7 @@ if __name__ == "__main__":
             for d in data_list:
                 data.append(d.split('\t'))
             print('Данные загружены')
+
     except FileNotFoundError: # перепроверить
         print('Ошибка! Файл "RU.txt" с данными не найден в текущей директории.')
 
