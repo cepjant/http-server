@@ -3,6 +3,7 @@ import time
 import urllib.parse
 import pytz
 from datetime import datetime
+from itertools import groupby
 
 hostName = "localhost"
 serverPort = 8000
@@ -166,13 +167,21 @@ class Server(BaseHTTPRequestHandler):
 
     def search(self):
         request = urllib.parse.unquote(self.path.split('=')[-1])
-        result = []
+        matches = []
         for city in data:
             alternatenames = city[3].split(',')
             for name in alternatenames:
                 if name.lower().startswith(request.lower()):
-                    result.append(name)
-        if result:
+                    matches.append(city)
+        if matches:
+            result = []
+            for city in sorted(matches, key=lambda i: int(i[14]), reverse=True):
+                alternatenames = city[3].split(',')
+                print(alternatenames)
+                for name in alternatenames:
+                    if name.lower().startswith(request.lower()) and name not in result:
+                        result.append(name)
+                        break
             response = {
                 'data': result[:20],
                 'status': 'ok'}
